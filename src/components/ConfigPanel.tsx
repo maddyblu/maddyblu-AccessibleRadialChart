@@ -89,31 +89,54 @@ export default function ConfigPanel({ config, onChange }: Props) {
 
       {/* Recency Colors */}
       <Section icon={<Palette size={16} />} title="Recency Tones">
-        <div className="grid grid-cols-3 gap-2">
-          <InputGroup label="Start">
-            <input 
-              type="color" 
-              value={config.recencyColorStart} 
-              onChange={(e) => handleChange("recencyColorStart", e.target.value)}
-              className="w-full h-8 bg-transparent border-none cursor-pointer"
-            />
-          </InputGroup>
-          <InputGroup label="End">
-            <input 
-              type="color" 
-              value={config.recencyColorEnd} 
-              onChange={(e) => handleChange("recencyColorEnd", e.target.value)}
-              className="w-full h-8 bg-transparent border-none cursor-pointer"
-            />
-          </InputGroup>
-          <InputGroup label="Exc.">
-            <input 
-              type="color" 
-              value={config.recencyColorException} 
-              onChange={(e) => handleChange("recencyColorException", e.target.value)}
-              className="w-full h-8 bg-transparent border-none cursor-pointer"
-            />
-          </InputGroup>
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="radio" 
+                checked={config.recencyGradientMode === "single"} 
+                onChange={() => handleChange("recencyGradientMode", "single")}
+                className="accent-black"
+              />
+              <span className="text-[10px] uppercase font-bold text-black/60">Single</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input 
+                type="radio" 
+                checked={config.recencyGradientMode === "gradient"} 
+                onChange={() => handleChange("recencyGradientMode", "gradient")}
+                className="accent-black"
+              />
+              <span className="text-[10px] uppercase font-bold text-black/60">Gradient</span>
+            </label>
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <InputGroup label="Start">
+              <input 
+                type="color" 
+                value={config.recencyColorStart} 
+                onChange={(e) => handleChange("recencyColorStart", e.target.value)}
+                className="w-full h-8 bg-transparent border-none cursor-pointer"
+              />
+            </InputGroup>
+            <InputGroup label="End">
+              <input 
+                type="color" 
+                value={config.recencyColorEnd} 
+                onChange={(e) => handleChange("recencyColorEnd", e.target.value)}
+                disabled={config.recencyGradientMode === "single"}
+                className={`w-full h-8 bg-transparent border-none cursor-pointer ${config.recencyGradientMode === "single" ? "opacity-20" : ""}`}
+              />
+            </InputGroup>
+            <InputGroup label="Exc.">
+              <input 
+                type="color" 
+                value={config.recencyColorException} 
+                onChange={(e) => handleChange("recencyColorException", e.target.value)}
+                className="w-full h-8 bg-transparent border-none cursor-pointer"
+              />
+            </InputGroup>
+          </div>
         </div>
       </Section>
 
@@ -137,6 +160,53 @@ export default function ConfigPanel({ config, onChange }: Props) {
             className="accent-black"
           />
           <label htmlFor="others" className="text-[10px] uppercase font-bold text-black/60 cursor-pointer">Group "Others"</label>
+        </div>
+      </Section>
+
+      {/* Advanced Typography */}
+      <Section icon={<Type size={16} />} title="Advanced Labels">
+        <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <InputGroup label="Font Family">
+              <input 
+                type="text" 
+                value={config.labelFontFamily} 
+                onChange={(e) => handleChange("labelFontFamily", e.target.value)}
+                className="w-full bg-black/5 border-b border-black/20 focus:border-black py-1 px-2 text-xs font-mono outline-none"
+              />
+            </InputGroup>
+            <InputGroup label="Font Style">
+              <input 
+                type="text" 
+                value={config.labelFontStyle} 
+                onChange={(e) => handleChange("labelFontStyle", e.target.value)}
+                className="w-full bg-black/5 border-b border-black/20 focus:border-black py-1 px-2 text-xs font-mono outline-none"
+              />
+            </InputGroup>
+          </div>
+          
+          <InputGroup label="Char Padding">
+            <input 
+              type="range" 
+              min="-2" max="5" step="0.1"
+              value={config.characterPadding} 
+              onChange={(e) => handleChange("characterPadding", Number(e.target.value))}
+              className="w-full accent-black"
+            />
+            <span className="text-[10px] text-black/40 font-mono">{config.characterPadding}px</span>
+          </InputGroup>
+
+          <InputGroup label="Position">
+            <select 
+              value={config.labelPosition}
+              onChange={(e) => handleChange("labelPosition", e.target.value)}
+              className="w-full bg-black/5 border-b border-black/20 focus:border-black py-1 px-2 text-sm font-mono outline-none"
+            >
+              <option value="outside">Outside (Curved)</option>
+              <option value="inside-radial">Inside (Radial)</option>
+              <option value="outer-radial">Outer Radial Segments</option>
+            </select>
+          </InputGroup>
         </div>
       </Section>
 

@@ -27,6 +27,11 @@ export interface ChartConfig {
   recencyColorEnd: string;
   recencyColorException: string;
   gridColor: string;
+  labelFontFamily: string;
+  labelFontStyle: string;
+  recencyGradientMode: "single" | "gradient";
+  characterPadding: number;
+  labelPosition: "outside" | "inside-radial" | "outer-radial";
 }
 
 export const DEFAULT_CHART_DATA: ChartDataItem[] = [
@@ -59,4 +64,9 @@ export const DEFAULT_CONFIG: ChartConfig = {
   recencyColorEnd: "#eab308",   // Yellow-500
   recencyColorException: "#ef4444", // Red-500
   gridColor: "rgba(0,0,0,0.08)",
+  labelFontFamily: "Courier",
+  labelFontStyle: "normal",
+  recencyGradientMode: "gradient",
+  characterPadding: 0.3,
+  labelPosition: "outside",
 };
