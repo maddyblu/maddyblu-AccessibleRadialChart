@@ -1,0 +1,6 @@
+{
+  "name": "Polar Experimenter",
+  "description": "A high-precision experimentation environment for Accessible Polar Charts. Test real-time configurations, import JSON data, and share your visual experiments.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
