@@ -28,7 +28,6 @@ declare module "chart.js" {
       fontStyle: string;
       labelColor: string;
       outerLabelPadding: number;
-      truncateLabels: boolean;
       characterPadding: number;
       labelPosition: "outside" | "inside-radial" | "outer-radial";
     };
@@ -56,7 +55,6 @@ const curvedLabelsPlugin: Plugin<"polarArea"> = {
       fontStyle, 
       labelColor, 
       outerLabelPadding, 
-      truncateLabels, 
       truncateFormatter,
       characterPadding,
       labelPosition
@@ -89,19 +87,8 @@ const curvedLabelsPlugin: Plugin<"polarArea"> = {
 
       ctx.font = `${fontStyle} ${fontSize}px ${fontFamily}, sans-serif`;
 
-      let displayText = label;
-      if (truncateLabels) {
-        const maxWidth = labelPosition === "inside-radial" 
-          ? arc.outerRadius * 0.8 
-          : (end - start) * (scaleRadius + outerLabelPadding) * 0.9;
-        
-        displayText = truncateFormatter
-          ? truncateFormatter(label, 12)
-          : truncateToFit(ctx, label, maxWidth, fontSize, fontFamily, fontStyle);
-      }
-
-      const chars = displayText.split("");
-      const radiusMax = scaleRadius + outerLabelPadding;
+      const radiusInitial = labelPosition === "outer-radial" ? scaleRadius : (scaleRadius + outerLabelPadding);
+      const isOuterRadial = labelPosition === "outer-radial";
 
       if (labelPosition === "inside-radial") {
         const charSpacing = fontSize * 0.85 + (characterPadding || 0);
@@ -111,6 +98,7 @@ const curvedLabelsPlugin: Plugin<"polarArea"> = {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
+        const chars = label.split("");
         chars.forEach((char) => {
           if (r < 10) return; // Don't draw too close to center
           const x = arc.x + Math.cos(middle) * r;
@@ -127,8 +115,6 @@ const curvedLabelsPlugin: Plugin<"polarArea"> = {
         });
       } else {
         // curved: either outside or outer-radial (inside with wrap)
-        const isOuterRadial = labelPosition === "outer-radial";
-        const radiusInitial = isOuterRadial ? scaleRadius : (scaleRadius + outerLabelPadding);
         const arcAngle = (end - start);
         
         ctx.fillStyle = labelColor;
@@ -136,54 +122,79 @@ const curvedLabelsPlugin: Plugin<"polarArea"> = {
         ctx.textBaseline = "middle";
 
         if (isOuterRadial) {
-          const words = displayText.split(" ");
           const outerR = radiusInitial - (fontSize * 0.7);
           const innerR = outerR - (fontSize * 1.1);
+          const arcAngle = end - start;
+          const limitFactor = 0.98;
 
-          // Try putting everything on the outer line first
-          const fullWidth = ctx.measureText(displayText).width + (displayText.length - 1) * (characterPadding || 0);
-          if (fullWidth <= arcAngle * outerR * 0.95) {
-            drawCurvedLine(ctx, displayText, arc.x, arc.y, outerR, middle, flip, characterPadding);
+          const getWidth = (str: string) => ctx.measureText(str).width + Math.max(0, str.length - 1) * (characterPadding || 0);
+          
+          const maxWOuter = arcAngle * outerR * limitFactor;
+          const maxWInner = arcAngle * innerR * limitFactor;
+
+          // a) Try putting everything on the outer line first
+          if (getWidth(label) <= maxWOuter) {
+            drawCurvedLine(ctx, label, arc.x, arc.y, outerR, middle, flip, characterPadding);
           } else {
-            // Split into 2 lines
-            const line1Radius = flip ? innerR : outerR;
-            const line2Radius = flip ? outerR : innerR;
+            // b) Check if splittable (space, -, &)
+            const splitRegex = /([\s\-&])/;
+            const isSplittable = /[\s\-&]/.test(label);
 
-            let splitIndex = 1; 
-            for (let i = 1; i <= words.length; i++) {
-              const line1 = words.slice(0, i).join(" ");
-              const w1 = ctx.measureText(line1).width + (line1.length - 1) * (characterPadding || 0);
-              if (w1 <= arcAngle * line1Radius * 0.95) {
-                splitIndex = i;
+            if (!isSplittable) {
+              const truncated = truncateToFit(ctx, label, maxWOuter, fontSize, fontFamily, fontStyle, characterPadding);
+              drawCurvedLine(ctx, truncated, arc.x, arc.y, outerR, middle, flip, characterPadding);
+            } else {
+              // c) & d) Try across two segments
+              const segmentsRaw = label.split(splitRegex);
+              const segments: string[] = [];
+              for (let i = 0; i < segmentsRaw.length; i += 2) {
+                segments.push(segmentsRaw[i] + (segmentsRaw[i + 1] || ""));
+              }
+
+              // Determine which radius is for which line based on flip
+              // flip = bottom half. Bottom half read inner-to-outer.
+              const line1R = flip ? innerR : outerR;
+              const line2R = flip ? outerR : innerR;
+
+              const maxW1 = arcAngle * line1R * limitFactor;
+              const maxW2 = arcAngle * line2R * limitFactor;
+
+              let splitIndex = 0;
+              for (let i = 1; i <= segments.length; i++) {
+                const line1 = segments.slice(0, i).join("").trim();
+                if (getWidth(line1) <= maxW1) {
+                  splitIndex = i;
+                } else {
+                  break;
+                }
+              }
+
+              let line1Text: string;
+              let line2Text: string;
+
+              if (splitIndex === 0) {
+                // Not even the first word fits? Truncate it.
+                line1Text = truncateToFit(ctx, segments[0].trim(), maxW1, fontSize, fontFamily, fontStyle, characterPadding);
+                line2Text = segments.slice(1).join("").trim();
               } else {
-                break;
+                line1Text = segments.slice(0, splitIndex).join("").trim();
+                line2Text = segments.slice(splitIndex).join("").trim();
               }
-            }
 
-            let line1Text = words.slice(0, splitIndex).join(" ");
-            let line2Text = words.slice(splitIndex).join(" ");
-
-            // Truncate line 1 if even the first word is too long
-            const maxW1 = arcAngle * line1Radius * 0.95;
-            if (ctx.measureText(line1Text).width + (line1Text.length - 1) * (characterPadding || 0) > maxW1) {
-              line1Text = truncateToFit(ctx, line1Text, maxW1, fontSize, fontFamily, fontStyle);
-              line2Text = ""; // Stop after truncation
-            }
-
-            if (line1Text) {
-              drawCurvedLine(ctx, line1Text, arc.x, arc.y, line1Radius, middle, flip, characterPadding);
-            }
-            
-            if (line2Text) {
-              const maxW2 = arcAngle * line2Radius * 0.95;
-              if (ctx.measureText(line2Text).width + (line2Text.length - 1) * (characterPadding || 0) > maxW2) {
-                line2Text = truncateToFit(ctx, line2Text, maxW2, fontSize, fontFamily, fontStyle);
+              if (line1Text) {
+                drawCurvedLine(ctx, line1Text, arc.x, arc.y, line1R, middle, flip, characterPadding);
               }
-              drawCurvedLine(ctx, line2Text, arc.x, arc.y, line2Radius, middle, flip, characterPadding);
+              if (line2Text) {
+                const finalLine2 = truncateToFit(ctx, line2Text, maxW2, fontSize, fontFamily, fontStyle, characterPadding);
+                drawCurvedLine(ctx, finalLine2, arc.x, arc.y, line2R, middle, flip, characterPadding);
+              }
             }
           }
         } else {
-          drawCurvedLine(ctx, displayText, arc.x, arc.y, radiusInitial, middle, flip, characterPadding);
+          // outside: always use outer label padding + radius
+          const maxWidth = (end - start) * (scaleRadius + outerLabelPadding) * 0.9;
+          const displayLabel = truncateToFit(ctx, label, maxWidth, fontSize, fontFamily, fontStyle, characterPadding);
+          drawCurvedLine(ctx, displayLabel, arc.x, arc.y, radiusInitial, middle, flip, characterPadding);
         }
       }
     });
@@ -243,7 +254,7 @@ const radialLinesPlugin: Plugin<"polarArea"> = {
     ctx.lineWidth = 1.25;
 
     const scaleRadius = (chart.scales.r as any).drawingArea;
-    const radius = scaleRadius + (options.outerLabelPadding || 0);
+    const radius = scaleRadius;
 
     meta.data.forEach((arc: any) => {
       ctx.beginPath();
@@ -270,12 +281,15 @@ function truncateToFit(
   maxWidth: number, 
   fontSize: number = 14,
   fontFamily: string = "Inter",
-  fontStyle: string = "bold"
+  fontStyle: string = "bold",
+  characterPadding: number = 0
 ) {
   ctx.font = `${fontStyle} ${fontSize}px ${fontFamily}, sans-serif`;
-  if (ctx.measureText(text).width <= maxWidth) return text;
+  const getWidth = (str: string) => ctx.measureText(str).width + Math.max(0, str.length - 1) * characterPadding;
+  
+  if (getWidth(text) <= maxWidth) return text;
   let t = text;
-  while (t.length > 3 && ctx.measureText(t + "...").width > maxWidth) {
+  while (t.length > 3 && getWidth(t + "...") > maxWidth) {
     t = t.slice(0, -1);
   }
   return t + "...";
@@ -321,7 +335,8 @@ function getColorForRecency(
   startHex: string = "#10b981",
   endHex: string = "#eab308",
   excHex: string = "#ef4444",
-  mode: "single" | "gradient" = "gradient"
+  mode: "single" | "gradient" = "gradient",
+  toneCount: number = 3
 ) {
   if (recency === undefined) return `rgba(156, 163, 175, ${alpha})`; // gray-400
   
@@ -339,11 +354,13 @@ function getColorForRecency(
 
   const start = hexToRgb(startHex);
   
+  const recV = Math.max(0, Math.min(100, recency));
+  
+  // Discretize recency into tones
+  const toneIndex = Math.floor(recV / (100 / toneCount));
+  const discreteV = (toneIndex / Math.max(1, toneCount - 1)); // 0 to 1 stepped
+
   if (mode === "single") {
-    // Luminescence-based coloring: 
-    // Recency 0 -> Selected Color
-    // Recency 100 -> Washed out (lighter/white)
-    
     let r1 = start.r / 255, g1 = start.g / 255, b1 = start.b / 255;
     let max = Math.max(r1, g1, b1), min = Math.min(r1, g1, b1);
     let h = 0, s = 0, l = (max + min) / 2;
@@ -357,12 +374,9 @@ function getColorForRecency(
       h /= 6;
     }
 
-    const recV = recency !== undefined ? Math.max(0, Math.min(100, recency)) : 50;
-    const v = recV / 100; // 0 is exact, 1 is washed out
-
     // Washout: Saturation drops to 20% of anchor, Lightness increases
-    const newL = l + (0.95 - l) * v * 0.8;
-    const newS = s * (1 - 0.8 * v); // drops to 20% at v=1
+    const newL = l + (0.95 - l) * discreteV * 0.8;
+    const newS = s * (1 - 0.8 * discreteV); 
 
     const hue2rgb = (p: number, q: number, t: number) => {
       if (t < 0) t += 1;
@@ -382,12 +396,94 @@ function getColorForRecency(
   }
 
   const end = hexToRgb(endHex);
-  const v = Math.max(0, Math.min(100, recency)) / 100;
-  const r = Math.round(start.r + (end.r - start.r) * v);
-  const g = Math.round(start.g + (end.g - start.g) * v);
-  const b = Math.round(start.b + (end.b - start.b) * v);
+  const r = Math.round(start.r + (end.r - start.r) * discreteV);
+  const g = Math.round(start.g + (end.g - start.g) * discreteV);
+  const b = Math.round(start.b + (end.b - start.b) * discreteV);
 
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/* ========================================================
+LEGEND COMPONENT
+======================================================== */
+
+function RecencyLegend({ config }: { config: Props }) {
+  const { 
+    recencyToneCount, 
+    recencyColorStart, 
+    recencyColorEnd, 
+    recencyColorException, 
+    recencyGradientMode 
+  } = config;
+
+  const tones = useMemo(() => {
+    const items = [];
+    const step = 100 / recencyToneCount;
+    
+    for (let i = 0; i < recencyToneCount; i++) {
+      const startRange = Math.round(i * step);
+      const endRange = i === recencyToneCount - 1 ? 100 : Math.round((i + 1) * step) - 1;
+      
+      let label = `${startRange}–${endRange}`;
+      if (recencyToneCount === 3) {
+        if (i === 0) label = `Most Recent`;
+        if (i === 1) label = `Mid Career`;
+        if (i === 2) label = `Early Career`;
+      }
+
+      // We use the midpoint of the range to get the color for that tone
+      const mid = (startRange + endRange) / 2;
+      const color = getColorForRecency(
+        mid, 
+        0.8, 
+        recencyColorStart, 
+        recencyColorEnd, 
+        recencyColorException, 
+        recencyGradientMode, 
+        recencyToneCount
+      );
+      
+      items.push({
+        label,
+        color
+      });
+    }
+    
+    // Add exception
+    items.push({
+      label: "Exception",
+      color: getColorForRecency(
+        -1, 
+        0.8, 
+        recencyColorStart, 
+        recencyColorEnd, 
+        recencyColorException, 
+        recencyGradientMode, 
+        recencyToneCount
+      )
+    });
+
+    return items;
+  }, [recencyToneCount, recencyColorStart, recencyColorEnd, recencyColorException, recencyGradientMode]);
+
+  return (
+    <div className="mt-8 flex flex-col items-center gap-4">
+      <h3 className="text-[11px] font-sans font-bold uppercase tracking-widest text-black/40">Recency</h3>
+      <div className="flex flex-wrap justify-center gap-6">
+        {tones.map((tone, i) => (
+          <div key={i} className="flex items-center gap-2 px-3 py-1 bg-black/[0.03] rounded-full border border-black/[0.05]">
+            <div 
+              className="w-3 h-3 rounded-full shadow-sm" 
+              style={{ backgroundColor: tone.color }}
+            />
+            <span className="text-[10px] font-mono font-bold text-black/70 uppercase whitespace-nowrap">
+              {tone.label}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 /* ========================================================
@@ -398,31 +494,32 @@ interface Props extends ChartConfig {
   data: ChartDataItem[];
 }
 
-export default function AccessiblePolarChart({
-  data,
-  width,
-  height,
-  backgroundColor,
-  outerLabelPadding,
-  fontSize,
-  labelColor,
-  truncateLabels,
-  maxVisibleSlices,
-  enableOthersSlice,
-  showRadialLines,
-  radialLineColor,
-  showBorders,
-  borderColor: configBorderColor,
-  recencyColorStart,
-  recencyColorEnd,
-  recencyColorException,
-  gridColor,
-  labelFontFamily,
-  labelFontStyle,
-  recencyGradientMode,
-  characterPadding,
-  labelPosition,
-}: Props) {
+export default function AccessiblePolarChart(props: Props) {
+  const {
+    data,
+    width = 500,
+    height = 500,
+    backgroundColor = "#ffffff",
+    outerLabelPadding = 0,
+    fontSize = 13,
+    labelColor = "#1a1a1a",
+    maxVisibleSlices = 10,
+    enableOthersSlice = true,
+    showRadialLines = true,
+    radialLineColor = "#cccccc",
+    showBorders = false,
+    borderColor: configBorderColor = "auto",
+    recencyColorStart = "#0cb678",
+    recencyColorEnd = "#eab308",
+    recencyColorException = "#ef4444",
+    gridColor = "#eeeeee",
+    labelFontFamily = "Courier",
+    labelFontStyle = "normal",
+    recencyGradientMode = "single",
+    characterPadding = 0.3,
+    labelPosition = "outer-radial",
+    recencyToneCount = 3,
+  } = props;
   const prepared = useMemo(
     () => prepareData(data, maxVisibleSlices, enableOthersSlice),
     [data, maxVisibleSlices, enableOthersSlice]
@@ -432,16 +529,16 @@ export default function AccessiblePolarChart({
     labels: prepared.map((x) => x.label),
     datasets: [{
       data: prepared.map((x) => x.value),
-      backgroundColor: prepared.map((x) => getColorForRecency(x.recency, 0.6, recencyColorStart, recencyColorEnd, recencyColorException, recencyGradientMode)),
+      backgroundColor: prepared.map((x) => getColorForRecency(x.recency, 0.6, recencyColorStart, recencyColorEnd, recencyColorException, recencyGradientMode, recencyToneCount)),
       borderColor: prepared.map((x) => {
         if (!showBorders) return "transparent";
         return configBorderColor === "auto" 
-          ? getColorForRecency(x.recency, 1, recencyColorStart, recencyColorEnd, recencyColorException, recencyGradientMode)
+          ? getColorForRecency(x.recency, 1, recencyColorStart, recencyColorEnd, recencyColorException, recencyGradientMode, recencyToneCount)
           : configBorderColor;
       }),
       borderWidth: showBorders ? 1.5 : 0,
     }],
-  }), [prepared, showBorders, configBorderColor, recencyColorStart, recencyColorEnd, recencyColorException, recencyGradientMode]);
+  }), [prepared, showBorders, configBorderColor, recencyColorStart, recencyColorEnd, recencyColorException, recencyGradientMode, recencyToneCount]);
 
   const options: ChartOptions<"polarArea"> = {
     responsive: true,
@@ -493,7 +590,6 @@ export default function AccessiblePolarChart({
         fontStyle: labelFontStyle,
         labelColor,
         outerLabelPadding,
-        truncateLabels,
         characterPadding,
         labelPosition,
       } as any,
@@ -514,7 +610,7 @@ export default function AccessiblePolarChart({
 
   return (
     <div 
-      className="relative flex items-center justify-center p-4" 
+      className="relative flex flex-col items-center justify-center p-8 overflow-auto" 
       style={{ 
         width: "100%", 
         height: "100%", 
@@ -525,6 +621,8 @@ export default function AccessiblePolarChart({
       <div style={{ width: `${width}px`, height: `${height}px`, maxWidth: '100%', maxHeight: '100%' }}>
         <PolarArea data={chartData} options={options} />
       </div>
+
+      <RecencyLegend config={props} />
     </div>
   );
 }

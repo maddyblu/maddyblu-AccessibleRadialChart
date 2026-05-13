@@ -110,6 +110,16 @@ export default function ConfigPanel({ config, onChange }: Props) {
               <span className="text-[10px] uppercase font-bold text-black/60">Gradient</span>
             </label>
           </div>
+          <InputGroup label="Tone Count">
+            <input 
+              type="range" 
+              min="2" max="10" step="1"
+              value={config.recencyToneCount} 
+              onChange={(e) => handleChange("recencyToneCount", Number(e.target.value))}
+              className="w-full accent-black"
+            />
+            <span className="text-[10px] text-black/40 font-mono">{config.recencyToneCount} Tones</span>
+          </InputGroup>
           <div className="grid grid-cols-3 gap-2">
             <InputGroup label="Start">
               <input 
@@ -289,14 +299,6 @@ export default function ConfigPanel({ config, onChange }: Props) {
           </div>
 
           <div className="flex items-center gap-2 pt-2 border-t border-black/5">
-            <input 
-              type="checkbox" 
-              checked={config.truncateLabels} 
-              onChange={(e) => handleChange("truncateLabels", e.target.checked)}
-              id="truncate"
-              className="accent-black"
-            />
-            <label htmlFor="truncate" className="text-[10px] uppercase font-bold text-black/60 cursor-pointer">Auto-Truncate Labels</label>
           </div>
         </div>
       </Section>

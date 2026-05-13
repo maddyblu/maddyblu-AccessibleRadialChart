@@ -16,7 +16,6 @@ export interface ChartConfig {
   outerLabelPadding: number;
   fontSize: number;
   labelColor: string;
-  truncateLabels: boolean;
   maxVisibleSlices: number;
   enableOthersSlice: boolean;
   showRadialLines: boolean;
@@ -32,6 +31,7 @@ export interface ChartConfig {
   recencyGradientMode: "single" | "gradient";
   characterPadding: number;
   labelPosition: "outside" | "inside-radial" | "outer-radial";
+  recencyToneCount: number;
 }
 
 export const DEFAULT_CHART_DATA: ChartDataItem[] = [
@@ -47,26 +47,26 @@ export const DEFAULT_CHART_DATA: ChartDataItem[] = [
 ];
 
 export const DEFAULT_CONFIG: ChartConfig = {
-  width: 700,
-  height: 700,
+  width: 500,
+  height: 500,
   backgroundColor: "#ffffff",
-  outerLabelPadding: 45,
+  outerLabelPadding: 0,
   fontSize: 13,
   labelColor: "#1a1a1a",
-  truncateLabels: true,
-  maxVisibleSlices: 7,
+  maxVisibleSlices: 10,
   enableOthersSlice: true,
   showRadialLines: true,
-  radialLineColor: "rgba(0,0,0,0.12)",
-  showBorders: true,
+  radialLineColor: "#cccccc",
+  showBorders: false,
   borderColor: "auto",
-  recencyColorStart: "#10b981", // Emerald-500
-  recencyColorEnd: "#eab308",   // Yellow-500
-  recencyColorException: "#ef4444", // Red-500
-  gridColor: "rgba(0,0,0,0.08)",
+  recencyColorStart: "#0cb678", 
+  recencyColorEnd: "#eab308",   
+  recencyColorException: "#ef4444", 
+  gridColor: "#eeeeee",
   labelFontFamily: "Courier",
   labelFontStyle: "normal",
-  recencyGradientMode: "gradient",
+  recencyGradientMode: "single",
   characterPadding: 0.3,
-  labelPosition: "outside",
+  labelPosition: "outer-radial",
+  recencyToneCount: 3,
 };
