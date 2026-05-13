@@ -491,7 +491,7 @@ COMPONENT
 ======================================================== */
 
 interface Props extends ChartConfig {
-  data: ChartDataItem[];
+  data: any[];
 }
 
 export default function AccessiblePolarChart(props: Props) {
@@ -519,10 +519,20 @@ export default function AccessiblePolarChart(props: Props) {
     characterPadding = 0.3,
     labelPosition = "outer-radial",
     recencyToneCount = 3,
+    dataMapping = { label: "label", value: "value", recency: "recency" },
   } = props;
+
+  const mappedData = useMemo(() => {
+    return data.map((item: any) => ({
+      label: String(item[dataMapping.label] || ""),
+      value: Number(item[dataMapping.value] || 0),
+      recency: item[dataMapping.recency] !== undefined ? Number(item[dataMapping.recency]) : undefined,
+    }));
+  }, [data, dataMapping]);
+
   const prepared = useMemo(
-    () => prepareData(data, maxVisibleSlices, enableOthersSlice),
-    [data, maxVisibleSlices, enableOthersSlice]
+    () => prepareData(mappedData, maxVisibleSlices, enableOthersSlice),
+    [mappedData, maxVisibleSlices, enableOthersSlice]
   );
 
   const chartData = useMemo(() => ({

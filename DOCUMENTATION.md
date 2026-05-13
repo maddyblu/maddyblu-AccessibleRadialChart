@@ -9,7 +9,8 @@ The component is configured via the `Props` interface found in `src/types.ts`.
 ### Core Data & Dimensions
 | Property | Type | Default | Description |
 | :--- | :--- | :--- | :--- |
-| `data` | `ChartDataItem[]` | Required | Array of objects: `{ label: string, value: number, recency?: number }`. |
+| `data` | `any[]` | Required | Array of data objects. See `dataMapping`. |
+| `dataMapping` | `DataMapping` | `{"label":"label", ...}` | **label**: Key for text. <br>**value**: Key for numeric size. <br>**recency**: Key for color scale. |
 | `width` | `number` | `500` | Width of the chart canvas in pixels. |
 | `height` | `number` | `500` | Height of the chart canvas in pixels. |
 | `backgroundColor` | `string` | `"#ffffff"` | Background color of the chart container. |
@@ -106,6 +107,25 @@ export default function App() {
 />
 ```
 **Output Description**: Slices transition through 5 distinct color steps from blue (recent) to red (old). Each slice has a sharp black border for high contrast.
+
+### Example 3: Custom Data Keys (Skillset)
+```tsx
+const skills = [
+  { skill: "React", concentration: 95, recency: 5 },
+  { skill: "TypeScript", concentration: 90, recency: 2 },
+  { skill: "D3.js", concentration: 60, recency: 40 },
+];
+
+<AccessiblePolarChart 
+  data={skills}
+  dataMapping={{
+    label: "skill",
+    value: "concentration",
+    recency: "recency"
+  }}
+/>
+```
+**Output Description**: Correct maps the "skill" field to the label and "concentration" to the slice size.
 
 ---
 

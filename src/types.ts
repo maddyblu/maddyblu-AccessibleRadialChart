@@ -9,6 +9,12 @@ export interface ChartDataItem {
   };
 }
 
+export interface DataMapping {
+  label: string;
+  value: string;
+  recency: string;
+}
+
 export interface ChartConfig {
   width: number;
   height: number;
@@ -32,6 +38,7 @@ export interface ChartConfig {
   characterPadding: number;
   labelPosition: "outside" | "inside-radial" | "outer-radial";
   recencyToneCount: number;
+  dataMapping: DataMapping;
 }
 
 export const DEFAULT_CHART_DATA: ChartDataItem[] = [
@@ -69,4 +76,9 @@ export const DEFAULT_CONFIG: ChartConfig = {
   characterPadding: 0.3,
   labelPosition: "outer-radial",
   recencyToneCount: 3,
+  dataMapping: {
+    label: "label",
+    value: "value",
+    recency: "recency"
+  }
 };

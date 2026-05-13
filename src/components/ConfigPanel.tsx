@@ -302,6 +302,36 @@ export default function ConfigPanel({ config, onChange }: Props) {
           </div>
         </div>
       </Section>
+
+      {/* Data Mapping */}
+      <Section icon={<LayoutGrid size={16} />} title="Data Mapping">
+        <div className="flex flex-col gap-3">
+          <InputGroup label="Label Key">
+            <input 
+              type="text" 
+              value={config.dataMapping.label} 
+              onChange={(e) => handleChange("dataMapping", { ...config.dataMapping, label: e.target.value })}
+              className="w-full bg-black/5 border-b border-black/20 focus:border-black py-1 px-2 text-xs font-mono outline-none"
+            />
+          </InputGroup>
+          <InputGroup label="Value Key">
+            <input 
+              type="text" 
+              value={config.dataMapping.value} 
+              onChange={(e) => handleChange("dataMapping", { ...config.dataMapping, value: e.target.value })}
+              className="w-full bg-black/5 border-b border-black/20 focus:border-black py-1 px-2 text-xs font-mono outline-none"
+            />
+          </InputGroup>
+          <InputGroup label="Recency Key">
+            <input 
+              type="text" 
+              value={config.dataMapping.recency} 
+              onChange={(e) => handleChange("dataMapping", { ...config.dataMapping, recency: e.target.value })}
+              className="w-full bg-black/5 border-b border-black/20 focus:border-black py-1 px-2 text-xs font-mono outline-none"
+            />
+          </InputGroup>
+        </div>
+      </Section>
     </div>
   );
 }
