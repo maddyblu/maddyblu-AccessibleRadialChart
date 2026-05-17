@@ -50,19 +50,74 @@ const curvedLabelsPlugin: Plugin<"polarArea"> = {
     const meta = chart.getDatasetMeta(0);
     const { 
       prepared, 
-      fontSize, 
+      fontSize: configFontSize, 
       fontFamily, 
       fontStyle, 
       labelColor, 
       outerLabelPadding, 
-      truncateFormatter,
       characterPadding,
       labelPosition
     } = options;
 
-    if (!prepared) return;
+    if (!prepared || labelPosition === "outside") return;
 
     ctx.save();
+
+    const scaleRadius = (chart.scales.r as any).drawingArea;
+    const isOuterRadial = labelPosition === "outer-radial";
+    const radiusInitial = isOuterRadial ? scaleRadius : (scaleRadius + outerLabelPadding);
+
+    // 1. Calculate Optimal Font Size
+    let optimalFontSize = configFontSize || 13;
+    const minFontSize = 8;
+    const limitFactor = 0.98;
+
+    const getWidth = (text: string, size: number) => {
+      ctx.font = `${fontStyle} ${size}px ${fontFamily}, sans-serif`;
+      return ctx.measureText(text).width + Math.max(0, text.length - 1) * (characterPadding || 0);
+    };
+
+    const testFontSize = (size: number) => {
+      for (let i = 0; i < prepared.length; i++) {
+        const item = prepared[i];
+        const arc = meta.data[i] as any;
+        const arcAngle = arc.endAngle - arc.startAngle;
+        const currentOuterR = radiusInitial - (size * 0.7);
+        const currentInnerR = currentOuterR - (size * 1.1);
+        const midAngle = (arc.startAngle + arc.endAngle) / 2;
+        const midNormalized = ((midAngle % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
+        const flip = midNormalized >= 0 && midNormalized <= Math.PI;
+        const line1R = flip ? currentInnerR : currentOuterR;
+        const maxW1 = arcAngle * line1R * limitFactor;
+
+        const label = item.label;
+        if (getWidth(label, size) <= maxW1) continue;
+
+        // Try natural split
+        const splitRegex = /([\s\-&])/;
+        const isSplittable = /[\s\-&]/.test(label);
+        if (isSplittable) {
+          const segmentsRaw = label.split(splitRegex);
+          const segments: string[] = [];
+          for (let k = 0; k < segmentsRaw.length; k += 2) {
+            segments.push(segmentsRaw[k] + (segmentsRaw[k + 1] || ""));
+          }
+          if (getWidth(segments[0].trim(), size) > maxW1) return false;
+        } else {
+          // Single word doesn't fit
+          return false;
+        }
+      }
+      return true;
+    };
+
+    while (optimalFontSize > minFontSize && !testFontSize(optimalFontSize)) {
+      optimalFontSize -= 0.5;
+    }
+    if (optimalFontSize < minFontSize) optimalFontSize = minFontSize;
+
+    // 2. Final Draw Loop using optimalFontSize
+    ctx.font = `${fontStyle} ${optimalFontSize}px ${fontFamily}, sans-serif`;
 
     meta.data.forEach((arc: any, index: number) => {
       const item = prepared[index];
@@ -72,129 +127,92 @@ const curvedLabelsPlugin: Plugin<"polarArea"> = {
       const start = arc.startAngle;
       const end = arc.endAngle;
       const middle = (start + end) / 2;
-      const scaleRadius = (chart.scales.r as any).drawingArea;
-
-      // Normalize middle angle to [0, 2PI]
+      const arcAngle = end - start;
       const midNormalized = ((middle % (Math.PI * 2)) + (Math.PI * 2)) % (Math.PI * 2);
-      
-      /**
-       * User preference:
-       * Upper quadrants (top half): clockwise flow
-       * Bottom quadrants (bottom half): anti-clockwise flow
-       * In canvas, 0 to PI is the bottom half, PI to 2PI is the top half.
-       */
       const flip = midNormalized >= 0 && midNormalized <= Math.PI;
 
-      ctx.font = `${fontStyle} ${fontSize}px ${fontFamily}, sans-serif`;
+      const outerR = radiusInitial - (optimalFontSize * 0.7);
+      const innerR = outerR - (optimalFontSize * 1.1);
 
-      const radiusInitial = labelPosition === "outer-radial" ? scaleRadius : (scaleRadius + outerLabelPadding);
-      const isOuterRadial = labelPosition === "outer-radial";
+      ctx.fillStyle = labelColor;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
 
       if (labelPosition === "inside-radial") {
-        const charSpacing = fontSize * 0.85 + (characterPadding || 0);
+        const charSpacing = optimalFontSize * 0.85 + (characterPadding || 0);
         let r = arc.outerRadius - 8;
-        
-        ctx.fillStyle = labelColor;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
         const chars = label.split("");
         chars.forEach((char) => {
-          if (r < 10) return; // Don't draw too close to center
+          if (r < 10) return;
           const x = arc.x + Math.cos(middle) * r;
           const y = arc.y + Math.sin(middle) * r;
-
           ctx.save();
           ctx.translate(x, y);
-          // Orientation: top of character points outward
-          let rotation = middle + Math.PI / 2;
-          ctx.rotate(rotation);
+          ctx.rotate(middle + Math.PI / 2);
           ctx.fillText(char, 0, 0);
           ctx.restore();
           r -= charSpacing;
         });
-      } else {
-        // curved: either outside or outer-radial (inside with wrap)
-        const arcAngle = (end - start);
-        
-        ctx.fillStyle = labelColor;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
+      } else if (isOuterRadial) {
+        const line1R = flip ? innerR : outerR;
+        const line2R = flip ? outerR : innerR;
+        const maxW1 = arcAngle * line1R * limitFactor;
+        const maxW2 = arcAngle * line2R * limitFactor;
 
-        if (isOuterRadial) {
-          const outerR = radiusInitial - (fontSize * 0.7);
-          const innerR = outerR - (fontSize * 1.1);
-          const arcAngle = end - start;
-          const limitFactor = 0.98;
+        const currentW = (str: string) => ctx.measureText(str).width + Math.max(0, str.length - 1) * (characterPadding || 0);
 
-          const getWidth = (str: string) => ctx.measureText(str).width + Math.max(0, str.length - 1) * (characterPadding || 0);
+        if (currentW(label) <= maxW1) {
+          drawCurvedLine(ctx, label, arc.x, arc.y, line1R, middle, flip, characterPadding);
+        } else {
+          // Splitting logic
+          const splitRegex = /([\s\-&])/;
+          const isSplittable = /[\s\-&]/.test(label);
           
-          const maxWOuter = arcAngle * outerR * limitFactor;
-          const maxWInner = arcAngle * innerR * limitFactor;
+          let line1Text = "";
+          let line2Text = "";
 
-          // a) Try putting everything on the outer line first
-          if (getWidth(label) <= maxWOuter) {
-            drawCurvedLine(ctx, label, arc.x, arc.y, outerR, middle, flip, characterPadding);
+          if (!isSplittable) {
+            // Forced Hyphenation: split word if doesn't fit even at minFontSize
+            const { head, tail } = forceHyphenate(ctx, label, maxW1, characterPadding);
+            line1Text = head;
+            line2Text = tail;
           } else {
-            // b) Check if splittable (space, -, &)
-            const splitRegex = /([\s\-&])/;
-            const isSplittable = /[\s\-&]/.test(label);
+            const segmentsRaw = label.split(splitRegex);
+            const segments: string[] = [];
+            for (let k = 0; k < segmentsRaw.length; k += 2) {
+              segments.push(segmentsRaw[k] + (segmentsRaw[k + 1] || ""));
+            }
 
-            if (!isSplittable) {
-              const truncated = truncateToFit(ctx, label, maxWOuter, fontSize, fontFamily, fontStyle, characterPadding);
-              drawCurvedLine(ctx, truncated, arc.x, arc.y, outerR, middle, flip, characterPadding);
-            } else {
-              // c) & d) Try across two segments
-              const segmentsRaw = label.split(splitRegex);
-              const segments: string[] = [];
-              for (let i = 0; i < segmentsRaw.length; i += 2) {
-                segments.push(segmentsRaw[i] + (segmentsRaw[i + 1] || ""));
-              }
-
-              // Determine which radius is for which line based on flip
-              // flip = bottom half. Bottom half read inner-to-outer.
-              const line1R = flip ? innerR : outerR;
-              const line2R = flip ? outerR : innerR;
-
-              const maxW1 = arcAngle * line1R * limitFactor;
-              const maxW2 = arcAngle * line2R * limitFactor;
-
-              let splitIndex = 0;
-              for (let i = 1; i <= segments.length; i++) {
-                const line1 = segments.slice(0, i).join("").trim();
-                if (getWidth(line1) <= maxW1) {
-                  splitIndex = i;
-                } else {
-                  break;
-                }
-              }
-
-              let line1Text: string;
-              let line2Text: string;
-
-              if (splitIndex === 0) {
-                // Not even the first word fits? Truncate it.
-                line1Text = truncateToFit(ctx, segments[0].trim(), maxW1, fontSize, fontFamily, fontStyle, characterPadding);
-                line2Text = segments.slice(1).join("").trim();
+            let splitIndex = 0;
+            for (let i = 1; i <= segments.length; i++) {
+              const testLine = segments.slice(0, i).join("").trim();
+              if (currentW(testLine) <= maxW1) {
+                splitIndex = i;
               } else {
-                line1Text = segments.slice(0, splitIndex).join("").trim();
-                line2Text = segments.slice(splitIndex).join("").trim();
-              }
-
-              if (line1Text) {
-                drawCurvedLine(ctx, line1Text, arc.x, arc.y, line1R, middle, flip, characterPadding);
-              }
-              if (line2Text) {
-                const finalLine2 = truncateToFit(ctx, line2Text, maxW2, fontSize, fontFamily, fontStyle, characterPadding);
-                drawCurvedLine(ctx, finalLine2, arc.x, arc.y, line2R, middle, flip, characterPadding);
+                break;
               }
             }
+
+            if (splitIndex === 0) {
+              // Even first natural segment doesn't fit, force hyphenate it
+              const { head, tail } = forceHyphenate(ctx, segments[0].trim(), maxW1, characterPadding);
+              line1Text = head;
+              line2Text = segments.slice(1).join("").trim() ? head : head; // dummy
+              // Re-combine line 2
+              line2Text = tail + (segments.slice(1).join("").trim() ? " " + segments.slice(1).join("").trim() : "");
+            } else {
+              line1Text = segments.slice(0, splitIndex).join("").trim();
+              line2Text = segments.slice(splitIndex).join("").trim();
+            }
           }
-        } else {
-          // outside: always use outer label padding + radius
-          const maxWidth = (end - start) * (scaleRadius + outerLabelPadding) * 0.9;
-          const displayLabel = truncateToFit(ctx, label, maxWidth, fontSize, fontFamily, fontStyle, characterPadding);
-          drawCurvedLine(ctx, displayLabel, arc.x, arc.y, radiusInitial, middle, flip, characterPadding);
+
+          if (line1Text) {
+            drawCurvedLine(ctx, line1Text, arc.x, arc.y, line1R, middle, flip, characterPadding);
+          }
+          if (line2Text) {
+            const finalLine2 = truncateToFit(ctx, line2Text, maxW2, optimalFontSize, fontFamily, fontStyle, characterPadding);
+            drawCurvedLine(ctx, finalLine2, arc.x, arc.y, line2R, middle, flip, characterPadding);
+          }
         }
       }
     });
@@ -202,6 +220,29 @@ const curvedLabelsPlugin: Plugin<"polarArea"> = {
     ctx.restore();
   },
 };
+
+/**
+ * Forced hyphenation helper
+ * Split at one character less than what fits comfortably
+ */
+function forceHyphenate(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, charPadding: number) {
+  const getW = (s: string) => ctx.measureText(s).width + Math.max(0, s.length - 1) * charPadding;
+  
+  let i = 1;
+  while (i <= text.length && getW(text.slice(0, i) + "-") <= maxWidth) {
+    i++;
+  }
+  // i is the first index where it DOESN'T fit with hyphen. 
+  // Comfortable limit is i-1. 
+  // "One character less than what would fit comfortably" means i-2.
+  const splitPoint = Math.max(1, i - 2);
+  
+  return {
+    head: text.slice(0, splitPoint) + "-",
+    tail: text.slice(splitPoint)
+  };
+}
+
 
 /**
  * Helper to draw a curved line of text
